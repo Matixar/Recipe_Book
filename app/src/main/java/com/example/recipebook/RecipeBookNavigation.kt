@@ -1,6 +1,8 @@
 package com.example.recipebook
 
 import androidx.navigation.NavHostController
+import com.example.recipebook.RecipeBookDestination.AI_WITH_CAMERA
+import com.example.recipebook.RecipeBookDestinationArgs.IMAGE
 import com.example.recipebook.RecipeBookDestinationArgs.NAME
 import com.example.recipebook.RecipeBookDestinationArgs.RECIPE_ID
 import com.example.recipebook.RecipeBookScreens.AI_SCREEN
@@ -20,6 +22,7 @@ private object RecipeBookScreens {
 object RecipeBookDestinationArgs {
     const val RECIPE_ID = "recipeId"
     const val NAME = "name"
+    const val IMAGE = "image"
 }
 
 object RecipeBookDestination {
@@ -29,6 +32,7 @@ object RecipeBookDestination {
     const val MANUAL_INPUT = MANUAL_INPUT_SCREEN
     const val SCRAPE_MANUAL_INPUT = "$MANUAL_INPUT_SCREEN?$NAME={$NAME}"
     const val CAMERA = CAMERA_SCREEN
+    const val AI_WITH_CAMERA = "$AI_SCREEN?$IMAGE={$IMAGE}"
 
 }
 
@@ -55,6 +59,13 @@ class RecipeBookNavigationActions(private val navController: NavHostController) 
     }
     fun navigateToCamera() {
         navController.navigate(CAMERA_SCREEN)
+    }
+
+    fun navigateToAIWithImage(image: String) {
+        navController.navigate(AI_WITH_CAMERA).let {
+            "$it?$IMAGE=$image"
+        }
+
     }
 
 }

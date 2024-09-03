@@ -1,12 +1,14 @@
 package com.example.recipebook.ai
 
+import android.Manifest
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.ImageCapture
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
@@ -15,8 +17,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -46,11 +50,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.recipebook.R
 import com.example.recipebook.UiState
-import java.io.File
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 
 val images = arrayOf(
     // Image generated using Gemini from the prompt "cupcake image"
@@ -66,11 +73,14 @@ val imageDescriptions = arrayOf(
     R.string.image3_description,
 )
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun BakingScreen(
     bakingViewModel: BakingViewModel = viewModel(),
-    openCameraCapture: () -> Unit
+    openCameraCapture: () -> Unit,
+    uri: Uri? = null
 ) {
+    var selectedPicture by rememberSaveable { mutableStateOf(uri) }
     val selectedImage = remember { mutableIntStateOf(0) }
     val placeholderPrompt = stringResource(R.string.prompt_placeholder)
     val placeholderResult = stringResource(R.string.results_placeholder)
@@ -78,6 +88,28 @@ fun BakingScreen(
     var result by rememberSaveable { mutableStateOf(placeholderResult) }
     val uiState by bakingViewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            openCameraCapture()
+        } else {
+            Toast.makeText(context, "Missing camera permission", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val pickedImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            selectedPicture = uri
+            Log.d("PhotoPicker", "Selected URI: $uri")
+        } else {
+            Log.d("PhotoPicker", "No media selected")
+        }
+    }
+
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -88,32 +120,26 @@ fun BakingScreen(
             modifier = Modifier.padding(16.dp)
         )
 
-        IconButton(onClick = openCameraCapture) {
+        IconButton(onClick = {
+            if (!cameraPermissionState.status.isGranted) {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            } else if (!cameraPermissionState.status.isGranted && cameraPermissionState.status.shouldShowRationale) {
+                //TODO: add rationale
+            } else {
+                openCameraCapture()
+            }
+        }) {
             Icon(Icons.Filled.Create, contentDescription = "Take a picture")
         }
-        ImagePicker()
 
-        LazyRow(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            itemsIndexed(images) { index, image ->
-                var imageModifier = Modifier
-                    .padding(start = 8.dp, end = 8.dp)
-                    .requiredSize(200.dp)
-                    .clickable {
-                        selectedImage.intValue = index
-                    }
-                if (index == selectedImage.intValue) {
-                    imageModifier =
-                        imageModifier.border(BorderStroke(4.dp, MaterialTheme.colorScheme.primary))
-                }
-                Image(
-                    painter = painterResource(image),
-                    contentDescription = stringResource(imageDescriptions[index]),
-                    modifier = imageModifier
-                )
-            }
-        }
+        if(selectedPicture != null) {
+        AsyncImage(
+            model = selectedPicture,
+            contentDescription = "",
+            modifier = Modifier.size(48.dp)
+        ) }
+
+        ImagePicker(pickedImage)
 
         Row(
             modifier = Modifier.padding(all = 16.dp)
@@ -130,10 +156,9 @@ fun BakingScreen(
 
             Button(
                 onClick = {
-                    val bitmap = BitmapFactory.decodeResource(
-                        context.resources,
-                        images[selectedImage.intValue]
-                    )
+                    val inputStream = context.contentResolver.openInputStream(selectedPicture!!)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
                     bakingViewModel.sendPrompt(bitmap, prompt)
                 },
                 enabled = prompt.isNotEmpty(),
@@ -171,18 +196,10 @@ fun BakingScreen(
 }
 
 @Composable
-fun ImagePicker() {
-    val selectedImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            Log.d("PhotoPicker", "Selected URI: $uri")
-        } else {
-            Log.d("PhotoPicker", "No media selected")
-        }
-    }
-
+fun ImagePicker(pickedImage: ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?>) {
     IconButton(
         onClick = {
-            selectedImage.launch(
+            pickedImage.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )}
     ) {
